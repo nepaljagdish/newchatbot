@@ -7,217 +7,138 @@ from sklearn.metrics.pairwise import cosine_similarity
 # -----------------------------
 # 0. Page config
 # -----------------------------
-st.set_page_config(page_title="AI Learning Assistant (Synthetic Intelligence)", layout="wide")
+st.set_page_config(page_title="AI Learning Concierge", layout="wide")
 
 # -----------------------------
 # 1. Data Initialization
 # -----------------------------
-
 learners = [
-    {"user_id": "E0001", "name": "Passive Explorer – A", "persona": "Passive Explorer", "cluster": 0, "dominant_format": "Video", "avg_score": 68, "completion_rate": 0.35, "description": "Starts many modules but completes few."},
-    {"user_id": "E0002", "name": "Structured Performer – B", "persona": "Structured Performer", "cluster": 1, "dominant_format": "Quiz", "avg_score": 78, "completion_rate": 0.72, "description": "Engages consistently and performs well."},
-    {"user_id": "E0003", "name": "Deep Diver – C", "persona": "Deep Diver", "cluster": 2, "dominant_format": "Video", "avg_score": 88, "completion_rate": 0.90, "description": "Highly engaged, prefers depth."},
+    {"user_id": "E0001", "name": "Passive Explorer – A", "persona": "Passive Explorer", "cluster": 0, "dominant_format": "Video", "avg_score": 68, "description": "Starts many modules but completes few."},
+    {"user_id": "E0002", "name": "Structured Performer – B", "persona": "Structured Performer", "cluster": 1, "dominant_format": "Quiz", "avg_score": 78, "description": "Engages consistently and performs well."},
+    {"user_id": "E0003", "name": "Deep Diver – C", "persona": "Deep Diver", "cluster": 2, "dominant_format": "Video", "avg_score": 88, "description": "Highly engaged, prefers depth."},
 ]
 learners_df = pd.DataFrame(learners)
 
 modules = [
-    ["M1",  "Workplace Communication Basics",       "Video", 4.4, 82, 75, 10, "Communication soft skills talk", 0.20, 0.45, 0.35],
-    ["M5",  "Security Awareness Deep Dive",         "Video", 4.7, 78, 82, 20, "Security cyber protection",      0.25, 0.40, 0.60],
-    ["M6",  "Cybersecurity Essentials Quiz",        "Quiz",  4.6, 80, 80, 8,  "Security cyber hacking defense", 0.50, 0.55, 0.65],
-    ["M7",  "Conflict Resolution Scenarios",        "Video", 4.2, 75, 70, 12, "Communication arguments hr",     0.22, 0.50, 0.30],
-    ["M10", "Effective Email Writing",              "Video", 4.5, 79, 76, 15, "Communication writing text",     0.18, 0.52, 0.33],
-    ["M11", "Policy Overview Article",              "Article",4.3, 77, 0,  10, "Policy compliance rules legal",  0.30, 0.48, 0.35],
-    ["M12", "Intermediate Security Quiz",           "Quiz",  4.4, 74, 78, 15, "Security network passwords",     0.18, 0.58, 0.42],
-    ["M13", "Phishing Detection Basics",            "Quiz",  4.1, 72, 74, 10, "Security email scam hack",       0.40, 0.38, 0.50],
-    ["M14", "Secure Authentication Webinar",        "Webinar",4.5, 70, 81, 30, "Security mfa login access",     0.15, 0.30, 0.55],
-    ["M22", "Understanding Data Privacy Policies",  "Article",4.3, 83, 0,  12, "Policy gdpr data legal",         0.35, 0.42, 0.58],
+    ["M1",  "Workplace Communication Basics",       "Video", 4.4, 10, "Communication soft skills talk"],
+    ["M5",  "Security Awareness Deep Dive",         "Video", 4.7, 20, "Security cyber protection"],
+    ["M6",  "Cybersecurity Essentials Quiz",        "Quiz",  4.6, 8,  "Security cyber hacking defense"],
+    ["M7",  "Conflict Resolution Scenarios",        "Video", 4.2, 12, "Communication arguments hr"],
+    ["M10", "Effective Email Writing",              "Video", 4.5, 15, "Communication writing text"],
+    ["M11", "Policy Overview Article",              "Article",4.3, 10, "Policy compliance rules legal"],
+    ["M12", "Intermediate Security Quiz",           "Quiz",  4.4, 15, "Security network passwords"],
+    ["M13", "Phishing Detection Basics",            "Quiz",  4.1, 10, "Security email scam hack"],
+    ["M14", "Secure Authentication Webinar",        "Webinar",4.5, 30, "Security mfa login access"],
+    ["M22", "Understanding Data Privacy Policies",  "Article",4.3, 12, "Policy gdpr data legal"],
 ]
 
-modules_df = pd.DataFrame(
-    modules,
-    columns=["module_id", "title", "type", "rating", "completion_rate", "avg_score", "duration_min", "tags", "cluster_pop_0", "cluster_pop_1", "cluster_pop_2"]
-)
+modules_df = pd.DataFrame(modules, columns=["module_id", "title", "type", "rating", "duration_min", "tags"])
 
 # -----------------------------
 # 2. Synthetic Intelligence Engine
 # -----------------------------
-
 class LearningIntelligence:
-    def __init__(self, modules_df):
-        self.df = modules_df
-        # Create a "Semantic Soup" (combining title, type, and tags for the AI to read)
+    def __init__(self, df):
+        self.df = df
         self.df['semantic_soup'] = self.df['title'] + " " + self.df['type'] + " " + self.df['tags']
-        
-        # Initialize the "Brain" (TF-IDF Vectorizer)
-        # This converts text into mathematical vectors
         self.vectorizer = TfidfVectorizer(stop_words='english')
         self.tfidf_matrix = self.vectorizer.fit_transform(self.df['semantic_soup'])
 
-    def semantic_search(self, query):
-        """
-        Converts user natural language into a vector and finds 
-        mathematically similar modules (Cosine Similarity).
-        """
-        # Convert user query to vector
+    def find_recommendations(self, query, top_n=2):
         query_vec = self.vectorizer.transform([query])
-        
-        # Calculate similarity between query and all modules
         cosine_sim = cosine_similarity(query_vec, self.tfidf_matrix).flatten()
         
-        # Return the similarity scores mapped to module indices
-        return cosine_sim
-
-    def calculate_adaptive_score(self, learner_row, similarity_scores=None):
-        """
-        Combines Symbolic AI (Rules) with Neural/Vector AI (Similarity)
-        """
-        cluster = learner_row["cluster"]
-        dominant_format = learner_row["dominant_format"]
+        # Get indices of top matches
+        related_indices = cosine_sim.argsort()[:-top_n-1:-1]
         
-        df = self.df.copy()
-        
-        # --- SYMBOLIC AI (Heuristics) ---
-        # 1. Format Match Score (FMS)
-        df["FMS"] = df["type"].apply(lambda t: 1.0 if t == dominant_format else (0.5 if t in ["Video", "Quiz"] else 0.0))
-        
-        # 2. Difficulty Fit Score (DFS)
-        df["DFS"] = df["avg_score"].apply(lambda m: 0.7 if m == 0 else 1.0 - (abs(learner_row["avg_score"] - m) / 100.0))
-        
-        # 3. Cluster Popularity Score (CPS) - "Collaborative Filtering" proxy
-        df["CPS"] = df.apply(lambda r: r[f"cluster_pop_{cluster}"], axis=1)
+        results = []
+        for idx in related_indices:
+            score = cosine_sim[idx]
+            if score > 0.1: # Only return relevant matches
+                results.append((self.df.iloc[idx], score))
+        return results
 
-        # --- SYNTHETIC AI (Semantic Context) ---
-        # If a query exists, use the vector similarity scores. If not, default to 0.
-        if similarity_scores is not None:
-            df["SemanticScore"] = similarity_scores
-        else:
-            df["SemanticScore"] = 0.0
-
-        # --- HYBRID WEIGHTING ---
-        # If the user asked a question (SemanticScore > 0), give huge weight to that.
-        # Otherwise, rely on the learner profile.
-        
-        if np.max(df["SemanticScore"]) > 0.1:
-            # Query Mode: The user wants something specific
-            df["FinalScore"] = (
-                0.60 * df["SemanticScore"] + 
-                0.15 * df["FMS"] + 
-                0.15 * df["CPS"] + 
-                0.10 * df["rating"] / 5.0
-            )
-        else:
-            # Passive Mode: Recommend based on profile
-            df["FinalScore"] = (
-                0.30 * df["FMS"] +
-                0.20 * df["DFS"] +
-                0.20 * df["CPS"] +
-                0.30 * (df["rating"]/5.0)
-            )
-
-        return df.sort_values("FinalScore", ascending=False)
-
-# Initialize AI Engine
 ai_engine = LearningIntelligence(modules_df)
 
 # -----------------------------
 # 3. Session State
 # -----------------------------
-if "saved_modules" not in st.session_state:
-    st.session_state.saved_modules = []
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hi! I'm your AI Course Concierge. Tell me what you want to learn today (e.g., 'security', 'writing skills') and I'll find the best module for you."}
+    ]
 
 # -----------------------------
-# 4. Sidebar - Profile
+# 4. Sidebar (User Profile)
 # -----------------------------
-st.sidebar.header("🧠 Neural Profile")
-user_options = learners_df["name"].tolist()
-selected_user_name = st.sidebar.selectbox("Select User:", user_options)
-selected_user = learners_df[learners_df["name"] == selected_user_name].iloc[0]
-
-st.sidebar.markdown(f"""
-**Cluster:** {selected_user['cluster']}  
-**Trained Format:** {selected_user['dominant_format']}  
-**Proficiency:** {selected_user['avg_score']}  
-""")
-st.sidebar.info("The AI engine adapts weights dynamically based on whether you are browsing (Passive Mode) or searching (Query Mode).")
+st.sidebar.header("👤 User Profile")
+selected_user_name = st.sidebar.selectbox("Select User:", learners_df["name"])
+user_row = learners_df[learners_df["name"] == selected_user_name].iloc[0]
+st.sidebar.write(f"**Persona:** {user_row['persona']}")
+st.sidebar.write(f"**Format:** {user_row['dominant_format']}")
+st.sidebar.write(f"**Skill Level:** {user_row['avg_score']}/100")
 
 # -----------------------------
-# 5. Main Interface
+# 5. Main Layout (Dashboard)
 # -----------------------------
-st.title("Synthetic Intelligence Learning Assistant")
+st.title("🎓 Enterprise Learning Portal")
 
-col_left, col_right = st.columns([1.5, 1])
+# Top Section: Static Recommendations (The "Netflix" view)
+st.subheader(f"Recommended for {user_row['name'].split('–')[0].strip()}")
 
-with col_right:
-    st.subheader("💬 AI Contextual Chat")
+# Simple logic for static display (filter by preferred format)
+rec_df = modules_df[modules_df['type'] == user_row['dominant_format']].head(3)
+cols = st.columns(3)
+
+for index, (col, row) in enumerate(zip(cols, rec_df.iterrows())):
+    module = row[1]
+    with col:
+        st.info(f"**{module['title']}**")
+        st.caption(f"⏱ {module['duration_min']} mins | ⭐ {module['rating']}")
+        st.button(f"Start Module {module['module_id']}", key=f"btn_{index}")
+
+st.markdown("---")
+st.markdown("### 💬 Ask the Course Concierge")
+st.caption("Scroll down to chat. The AI is pinned to the bottom.")
+
+# -----------------------------
+# 6. Chatbot Interface (Pinned to Bottom)
+# -----------------------------
+
+# Display chat history
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Chat Input (This pins to the bottom of the screen automatically)
+if prompt := st.chat_input("What do you want to learn?"):
+    # 1. User Message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # 2. AI Logic
+    recommendations = ai_engine.find_recommendations(prompt)
     
-    user_query = st.chat_input("Ask for content (e.g., 'help me write better emails' or 'prevent hacking')")
-    
-    # Process Query
-    similarity_scores = None
-    ai_response_text = "I've analyzed your profile. Here are the optimal modules for your learning style."
-    
-    if user_query:
-        # 1. Run Semantic Search
-        similarity_scores = ai_engine.semantic_search(user_query)
+    response_text = ""
+    if recommendations:
+        top_rec, score = recommendations[0]
+        response_text = f"I found a great match for **'{prompt}'**:\n\n" \
+                        f"### 🚀 **{top_rec['title']}**\n" \
+                        f"- **Type:** {top_rec['type']}\n" \
+                        f"- **Match Confidence:** {score*100:.0f}%\n\n" \
+                        f"Would you like to start this now?"
         
-        # 2. Generate "Synthetic" Reasoning
-        # (In a full app, this would be an LLM API call. Here we simulate the reasoning based on vectors)
-        top_match_idx = np.argmax(similarity_scores)
-        top_score = similarity_scores[top_match_idx]
-        
-        if top_score > 0.1:
-            st.session_state.chat_history.append({"role": "user", "content": user_query})
-            match_title = modules_df.iloc[top_match_idx]['title']
-            match_type = modules_df.iloc[top_match_idx]['type']
-            
-            # Simulated RAG response
-            response = (f"I processed your intent: **'{user_query}'**. "
-                        f"Based on semantic analysis, **{match_title}** ({match_type}) "
-                        f"is a {top_score*100:.0f}% vector match for this topic.")
-            
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
-            ai_response_text = response
-        else:
-             st.session_state.chat_history.append({"role": "user", "content": user_query})
-             fallback = "I analyzed the catalog, but didn't find a strong semantic match. Displaying general recommendations based on your profile cluster."
-             st.session_state.chat_history.append({"role": "assistant", "content": fallback})
-
-    # Display Chat
-    for msg in st.session_state.chat_history:
-        st.chat_message(msg["role"]).write(msg["content"])
-
-with col_left:
-    st.subheader("🎯 Intelligent Recommendations")
-    
-    # Calculate scores (Dynamic Weighting)
-    scored_df = ai_engine.calculate_adaptive_score(selected_user, similarity_scores)
-    
-    top_rec = scored_df.iloc[0]
-    
-    # Visualizing the "Why"
-    st.markdown(f"**Top Pick:** {top_rec['title']}")
-    
-    # Progress bar for "AI Confidence"
-    confidence = top_rec['FinalScore'] if top_rec['FinalScore'] < 1.0 else 0.99
-    st.progress(confidence, text=f"AI Confidence Score: {confidence:.2f}")
-
-    if similarity_scores is not None and np.max(similarity_scores) > 0.1:
-        st.caption(f"Reasoning: High semantic alignment with query '{user_query}'")
+        # If we have a second good match, mention it
+        if len(recommendations) > 1:
+            sec_rec, sec_score = recommendations[1]
+            response_text += f"\n\n*Alternatively, you might like '{sec_rec['title']}' ({sec_rec['type']}).*"
     else:
-        st.caption(f"Reasoning: Matches '{selected_user['dominant_format']}' preference & Cluster {selected_user['cluster']} trends.")
+        response_text = "I couldn't find a specific course matching that topic. " \
+                        "Try searching for 'Security', 'Communication', or 'Compliance'."
 
-    # Data Table
-    display_cols = ["title", "type", "duration_min", "rating", "FinalScore"]
-    st.dataframe(
-        scored_df[display_cols].style.background_gradient(subset=["FinalScore"], cmap="Greens"),
-        use_container_width=True,
-        hide_index=True
-    )
+    # 3. AI Response
+    with st.chat_message("assistant"):
+        st.markdown(response_text)
     
-    # Explanation of Logic
-    with st.expander("View System Logic (Debug)"):
-        st.write("The system uses **TF-IDF Vectorization** to map your query into multi-dimensional space.")
-        st.write("If **SemanticScore > 0.1**, the algorithm shifts weights to prioritize **Context** (60%).")
-        st.write("If no query, it prioritizes **Behavioral Patterns** (Cluster Pop + Format Match).")
+    st.session_state.messages.append({"role": "assistant", "content": response_text})
