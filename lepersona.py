@@ -82,7 +82,7 @@ def generate_gemini_response(user_query, relevant_courses, user_profile):
     Sends the user query + retrieved course data to Google Gemini.
     """
     # Initialize Model
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
 
     # Construct the Context String from Dataframe
     context_str = ""
@@ -129,7 +129,7 @@ st.sidebar.markdown(f"""
 **Format:** {user_row['dominant_format']}  
 **Skill Level:** {user_row['avg_score']}/100
 """)
-st.sidebar.info("System is running on **Google Gemini 1.5 Flash** (Free Tier)")
+st.sidebar.info("System is running on **Google Gemini 2.5 Flash** (Free Tier)")
 
 # Dashboard Top
 st.title("🎓 Enterprise Learning Portal")
