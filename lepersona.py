@@ -3,11 +3,17 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import google.generativeai as genai
 
 # -----------------------------
-# 0. Page config
+# 0. Configuration
 # -----------------------------
-st.set_page_config(page_title="AI Learning Concierge", layout="wide")
+st.set_page_config(page_title="AI Learning Concierge (Gemini)", layout="wide")
+
+# Configure Google Gemini Key
+# NOTE: In production, use st.secrets["GOOGLE_API_KEY"] instead of hardcoding!
+API_KEY = "AIzaSyDPh4ttMMdcFR9NCmhMzvJxVSG9LZxw6vw" 
+genai.configure(api_key=API_KEY)
 
 # -----------------------------
 # 1. Data Initialization
@@ -35,7 +41,7 @@ modules = [
 modules_df = pd.DataFrame(modules, columns=["module_id", "title", "type", "rating", "duration_min", "tags"])
 
 # -----------------------------
-# 2. Synthetic Intelligence Engine
+# 2. Retrieval Engine (The "R" in RAG)
 # -----------------------------
 class LearningIntelligence:
     def __init__(self, df):
@@ -44,101 +50,134 @@ class LearningIntelligence:
         self.vectorizer = TfidfVectorizer(stop_words='english')
         self.tfidf_matrix = self.vectorizer.fit_transform(self.df['semantic_soup'])
 
-    def find_recommendations(self, query, top_n=2):
+    def retrieve_context(self, query, top_n=3):
+        """
+        Finds the most relevant courses to feed to the LLM.
+        """
+        query_lower = query.lower()
+        
+        # 1. Check for metadata filters (Rule-based layer)
+        if "long" in query_lower:
+            return self.df.sort_values("duration_min", ascending=False).head(top_n)
+        elif "short" in query_lower or "quick" in query_lower:
+            return self.df.sort_values("duration_min", ascending=True).head(top_n)
+        elif "best" in query_lower or "top" in query_lower:
+            return self.df.sort_values("rating", ascending=False).head(top_n)
+        
+        # 2. Semantic Search (Vector Search)
         query_vec = self.vectorizer.transform([query])
         cosine_sim = cosine_similarity(query_vec, self.tfidf_matrix).flatten()
-        
-        # Get indices of top matches
         related_indices = cosine_sim.argsort()[:-top_n-1:-1]
         
-        results = []
-        for idx in related_indices:
-            score = cosine_sim[idx]
-            if score > 0.1: # Only return relevant matches
-                results.append((self.df.iloc[idx], score))
-        return results
+        # Return the actual dataframe rows
+        return self.df.iloc[related_indices]
 
 ai_engine = LearningIntelligence(modules_df)
 
 # -----------------------------
-# 3. Session State
+# 3. Gemini LLM Generation (The "G" in RAG)
 # -----------------------------
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Hi! I'm your AI Course Concierge. Tell me what you want to learn today (e.g., 'security', 'writing skills') and I'll find the best module for you."}
-    ]
+def generate_gemini_response(user_query, relevant_courses, user_profile):
+    """
+    Sends the user query + retrieved course data to Google Gemini.
+    """
+    # Initialize Model
+    model = genai.GenerativeModel('gemini-1.5-flash')
+
+    # Construct the Context String from Dataframe
+    context_str = ""
+    for _, row in relevant_courses.iterrows():
+        context_str += (f"- ID: {row['module_id']} | Title: {row['title']} | "
+                        f"Type: {row['type']} | Duration: {row['duration_min']}m | "
+                        f"Rating: {row['rating']}\n")
+
+    # Construct the Full Prompt
+    prompt = f"""
+    You are an expert Learning Concierge for a corporate training portal.
+    
+    USER PROFILE:
+    Name: {user_profile['name']}
+    Preferred Format: {user_profile['dominant_format']}
+    
+    USER REQUEST: "{user_query}"
+    
+    AVAILABLE COURSES (Context):
+    {context_str}
+    
+    INSTRUCTIONS:
+    1. Recommend the best course from the list above.
+    2. Explain WHY it fits the user's request and their profile (e.g. if they like videos, mention that).
+    3. If the user asked for "long" or "short", highlight the duration.
+    4. Keep the tone professional, encouraging, and concise.
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Error contacting Google Gemini: {str(e)}"
 
 # -----------------------------
-# 4. Sidebar (User Profile)
+# 4. Interface (Sidebar & Dashboard)
 # -----------------------------
 st.sidebar.header("👤 User Profile")
 selected_user_name = st.sidebar.selectbox("Select User:", learners_df["name"])
 user_row = learners_df[learners_df["name"] == selected_user_name].iloc[0]
-st.sidebar.write(f"**Persona:** {user_row['persona']}")
-st.sidebar.write(f"**Format:** {user_row['dominant_format']}")
-st.sidebar.write(f"**Skill Level:** {user_row['avg_score']}/100")
 
-# -----------------------------
-# 5. Main Layout (Dashboard)
-# -----------------------------
+st.sidebar.markdown(f"""
+**Persona:** {user_row['persona']}  
+**Format:** {user_row['dominant_format']}  
+**Skill Level:** {user_row['avg_score']}/100
+""")
+st.sidebar.info("System is running on **Google Gemini 1.5 Flash** (Free Tier)")
+
+# Dashboard Top
 st.title("🎓 Enterprise Learning Portal")
+st.subheader(f"Dashboard for {user_row['name'].split('–')[0].strip()}")
 
-# Top Section: Static Recommendations (The "Netflix" view)
-st.subheader(f"Recommended for {user_row['name'].split('–')[0].strip()}")
-
-# Simple logic for static display (filter by preferred format)
+# Static Recs (Visuals)
 rec_df = modules_df[modules_df['type'] == user_row['dominant_format']].head(3)
 cols = st.columns(3)
-
 for index, (col, row) in enumerate(zip(cols, rec_df.iterrows())):
     module = row[1]
     with col:
         st.info(f"**{module['title']}**")
         st.caption(f"⏱ {module['duration_min']} mins | ⭐ {module['rating']}")
-        st.button(f"Start Module {module['module_id']}", key=f"btn_{index}")
+        if st.button(f"Start {module['module_id']}", key=f"btn_{index}"):
+            st.success(f"Launched {module['title']}")
 
 st.markdown("---")
 st.markdown("### 💬 Ask the Course Concierge")
 st.caption("Scroll down to chat. The AI is pinned to the bottom.")
 
 # -----------------------------
-# 6. Chatbot Interface (Pinned to Bottom)
+# 5. Chat Interface
 # -----------------------------
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! I'm powered by Google Gemini. Ask me for a course recommendation (e.g., 'short video on security')."}]
 
-# Display chat history
+# Display History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Chat Input (This pins to the bottom of the screen automatically)
+# Chat Input
 if prompt := st.chat_input("What do you want to learn?"):
     # 1. User Message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 2. AI Logic
-    recommendations = ai_engine.find_recommendations(prompt)
-    
-    response_text = ""
-    if recommendations:
-        top_rec, score = recommendations[0]
-        response_text = f"I found a great match for **'{prompt}'**:\n\n" \
-                        f"### 🚀 **{top_rec['title']}**\n" \
-                        f"- **Type:** {top_rec['type']}\n" \
-                        f"- **Match Confidence:** {score*100:.0f}%\n\n" \
-                        f"Would you like to start this now?"
+    # 2. Logic (Retrieve + Generate)
+    with st.spinner("Gemini is thinking..."):
+        # A. Search Database
+        relevant_data = ai_engine.retrieve_context(prompt)
         
-        # If we have a second good match, mention it
-        if len(recommendations) > 1:
-            sec_rec, sec_score = recommendations[1]
-            response_text += f"\n\n*Alternatively, you might like '{sec_rec['title']}' ({sec_rec['type']}).*"
-    else:
-        response_text = "I couldn't find a specific course matching that topic. " \
-                        "Try searching for 'Security', 'Communication', or 'Compliance'."
-
+        # B. Ask LLM
+        ai_response = generate_gemini_response(prompt, relevant_data, user_row)
+    
     # 3. AI Response
     with st.chat_message("assistant"):
-        st.markdown(response_text)
+        st.markdown(ai_response)
     
-    st.session_state.messages.append({"role": "assistant", "content": response_text})
+    st.session_state.messages.append({"role": "assistant", "content": ai_response})
